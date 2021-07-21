@@ -211,6 +211,8 @@ class HydraModule(torch.nn.Module):
                 delattr(self, 'train_metrics') 
             delattr(self, 'eval_metrics')
             
+
+
     def model_checkpoint_save(self,model_checkpoint_path):
         """[saves model parameters, optimizer parameters, lr_scheduler parameters]
 
@@ -225,10 +227,14 @@ class HydraModule(torch.nn.Module):
         if hasattr(self, 'lr_schedulers'):
             for i, lrs_dict in enumerate(self.lr_schedulers):
                 # save_file['lr_schedular'+ str(i+1)+'_state_dict'] = lrs.state_dict()
-                save_file['lr_schedular'+ str(i+1)] = {'lr_schedular_state_dict':lrs_dict['lr_scheduler'].state_dict(),
-                        'update': lrs_dict['update']}
+                new_dict = {'lr_schedular_state_dict':lrs_dict['lr_scheduler'].state_dict()}
+                for key, value in lrs_dict.items():
+                    if key != 'lr_scheduler':
+                        new_dict[key] = value
+                save_file['lr_schedular'+ str(i+1)] = new_dict
+                
         torch.save(save_file, model_checkpoint_path)      
-        
+    
     def load_all_weights(self, load_path, only_model = True):
         """[summary]
 
@@ -245,7 +251,7 @@ class HydraModule(torch.nn.Module):
 
         else:
             self.compile_utils()
-            self.get_lr_schedulers_epoch_and_step_lists()
+            self.get_lr_schedulers_epoch_and_step_dict()
             print('compile done')
             self.load_state_dict(save_file['model_state_dict'])
             print('loaded model')
@@ -261,38 +267,62 @@ class HydraModule(torch.nn.Module):
                     # lrs.load_state_dict(save_file['lr_schedular'+ str(i+1)+'_state_dict'])
                     lr_state_dict_update_dict = save_file['lr_schedular'+ str(i+1)]
                     lrs_dict['lr_scheduler'].load_state_dict(lr_state_dict_update_dict['lr_schedular_state_dict'])
-                    lrs_dict['update'] = lr_state_dict_update_dict['update']
-                print('loaded lr_scheduler')    
+                    for key, value in lr_state_dict_update_dict.items():
+                        if key != 'lr_schedular_state_dict':
+                            lrs_dict[key] = value
                 
-    def scheduler_epoch_step(self, *args):
+                print('loaded lr_scheduler') 
+
+
+    def scheduler_epoch_step(self):
         if self.lr_schedulers is not None:
             if (self.train_steps_complete is True) and (self.epoch_train_active is True):
                 if (len(self.lr_schedulers_epoch) !=0):
-                    for lrs in self.lr_schedulers_epoch:
-                        lrs.step()
+                    for _, lrs_dict in self.lr_schedulers_epoch.items():
+                        if 'track_metric' in lrs_dict.keys():
+                            if lrs_dict['track_metric']=='train_loss':
+                                lrs_dict['lr_scheduler'].step(self.train_loss)
+                                #print('LRS_TRAIN_EPOCH_EXECUTED_ON_TRAIN_LOSS')
+                            else:
+                                lrs_dict['lr_scheduler'].step(self.train_metrics[lrs_dict['track_metric']])
+                                #print('LRS_TRAIN_METRIC_TRACKED')
+                        else:
+                            lrs_dict['lr_scheduler'].step()
+                            #print('LRS_TRAIN_EPOCH_EXECUTED')
+            
                 else:
                     pass
 
             elif (self.train_steps_complete is False) and (self.epoch_train_active is True):
                 if len(self.lr_schedulers_perstep) != 0:
-                    for lrs in self.lr_schedulers_perstep:
-                        lrs.step() 
-            
+                    for _, lrs_dict in self.lr_schedulers_perstep.items():
+                        lrs_dict['lr_scheduler'].step()
+                        #print('LRS_TRAIN_STEP_EXECUTED')
                 else:
                     pass   
+                
             elif (self.eval_steps_complete is True) and (self.epoch_eval_active is True):
                 if (len(self.lr_schedulers_eval_epoch) !=0):
-                    for lrs in self.lr_schedulers_eval_epoch:
-                        lrs.step()
+                    for _, lrs_dict in self.lr_schedulers_eval_epoch.items():
+                        if 'track_metric' in lrs_dict.keys():
+                            if lrs_dict['track_metric']=='eval_loss':
+                                lrs_dict['lr_scheduler'].step(self.eval_loss)
+                                #print('LRS_EVAL_EPOCH_EXECUTED_ON_EVAL_LOSS')
+                            else:
+                                lrs_dict['lr_scheduler'].step(self.eval_metrics[lrs_dict['track_metric']]) 
+                                #print('LRS_EVAL_METRIC_TRACKED')   
+                        else:
+                            lrs_dict['lr_scheduler'].step()
+                            #print('LRS_EVAL_EPOCH_EXECUTED')
                         
                 else:
                     pass
 
             elif (self.eval_steps_complete is False) and (self.epoch_eval_active is True):
                 if len(self.lr_schedulers_eval_perstep) != 0:
-                    for lrs in self.lr_schedulers_eval_perstep:
-                        lrs.step() 
-                        
+                    for _, lrs_dict in self.lr_schedulers_eval_perstep.items():
+                        lrs_dict['lr_scheduler'].step()
+                        #print('LRS_EVAL_STEP_EXECUTED')
                 else:
                     pass   
             else:
@@ -316,25 +346,25 @@ class HydraModule(torch.nn.Module):
             assert type(self.class_num_to_name) == dict
 
 
-    def get_lr_schedulers_epoch_and_step_lists(self):
+    def get_lr_schedulers_epoch_and_step_dict(self):
         if self.lr_schedulers is not None:
             assert type(self.lr_schedulers) == list
-            self.lr_schedulers_epoch = []
-            self.lr_schedulers_perstep = []
-            self.lr_schedulers_eval_perstep = []
-            self.lr_schedulers_eval_epoch = []
+            self.lr_schedulers_epoch = {}
+            self.lr_schedulers_perstep = {}
+            self.lr_schedulers_eval_perstep = {}
+            self.lr_schedulers_eval_epoch = {}
             for lrs_dict in self.lr_schedulers:
                 if lrs_dict['update'] == 'step':
-                    self.lr_schedulers_perstep.append(lrs_dict['lr_scheduler'])
+                    self.lr_schedulers_perstep[lrs_dict['name']] = lrs_dict
                     
                 elif lrs_dict['update'] == 'epoch':
-                    self.lr_schedulers_epoch.append(lrs_dict['lr_scheduler'])  
+                    self.lr_schedulers_epoch[lrs_dict['name']] = lrs_dict  
                 
                 elif lrs_dict['update'] == 'eval_step':
-                    self.lr_schedulers_eval_perstep.append(lrs_dict['lr_scheduler'])
+                    self.lr_schedulers_eval_perstep[lrs_dict['name']] = lrs_dict
                     
                 elif lrs_dict['update'] == 'eval_epoch':
-                    self.lr_schedulers_eval_epoch.append(lrs_dict['lr_scheduler'])  
+                    self.lr_schedulers_eval_epoch[lrs_dict['name']] = lrs_dict  
                     
                 else:
                     raise RuntimeError('only "epoch" and "step" updates valid ')
@@ -346,11 +376,42 @@ class HydraModule(torch.nn.Module):
             batch = batch.to(**kwargs)    
         return batch
         
-    def train_step_wrapper(self, batch):
-        batch = self.load_data_targets(batch)
-        loss, preds = self.train_step(batch)
-        self.scheduler_epoch_step()    #################
+    def train_step_wrapper(self, batch, cpu_to_gpu_tensor_processing):
+        batch = self.load_data_targets(batch, **cpu_to_gpu_tensor_processing)         
+        loss, preds, targets = self.train_step(batch)
+        loss, preds = loss.detach(), preds.detach()   
+        self.update_step_loss(loss)    
+        if hasattr(self, 'metrics') and (targets is not None):
+            self.update_step_metrics(preds, targets)  
+        self.on_train_step_end(preds, targets, loss)
+        self.scheduler_epoch_step() 
+        
+    def train_on_steps_completion_wrapper(self):   
+        self.train_loss = self.train_loss.mean()    
+        if hasattr(self, 'metrics') and hasattr(self, 'train_metrics'):   
+            self.compute_epoch_metrics_mean()
+        self.scheduler_epoch_step()   ######################
+        self.on_train_epoch_end()        
+    
+    
+    def eval_step_wrapper(self, batch, cpu_to_gpu_tensor_processing):  
+        batch = self.load_data_targets(batch, **cpu_to_gpu_tensor_processing)
+        #print(batch[0].shape, batch[1].shape)   ##########################################################
+        loss, preds, targets = self.eval_step(batch)
         loss, preds = loss.detach(), preds.detach()
+        self.update_step_loss(loss)
+        if hasattr(self, 'metrics') and (targets is not None):
+            self.update_step_metrics(preds, targets) 
+        self.on_eval_step_end(preds, targets, loss)                # EVAL STEP END FUNCTION CALL
+        self.scheduler_epoch_step()    #################   
+        
+    def eval_on_steps_completion_wrapper(self):
+        self.eval_loss = self.eval_loss.mean()    
+        if hasattr(self, 'metrics') and hasattr(self, 'eval_metrics'):
+            self.compute_epoch_metrics_mean()
+        self.scheduler_epoch_step() ################    
+        self.on_eval_epoch_end(self.callbacks)    
+        
 
 
     def fit(self, train_dataset, test_dataset, epochs = 1, batch_size = 32, callbacks = None,
@@ -358,7 +419,7 @@ class HydraModule(torch.nn.Module):
             wandb_p = None):
         
         self.compile_utils()
-        self.get_lr_schedulers_epoch_and_step_lists()
+        self.get_lr_schedulers_epoch_and_step_dict()
         pin_memory = True if ((torch.cuda.is_available()) and (num_workers > 0)) else False
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, num_workers = num_workers, shuffle = True,pin_memory = pin_memory)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = batch_size, num_workers = num_workers, shuffle = False, pin_memory = pin_memory)
@@ -371,31 +432,21 @@ class HydraModule(torch.nn.Module):
             writer = SummaryWriter(logs_path)
         else:
             writer = None    
+        self.callbacks = callbacks
             
         for epoch in range(epochs):
+            #print('Epoch: ', epoch)  #######################################################################
             self.train()
             self.epoch_eval_active = False
             self.epoch_train_active = True
             self.train_steps_complete = False
             for batch in train_loader:
-                batch = self.load_data_targets(batch)
-                loss, preds = self.train_step(batch)
-                loss, preds = loss.detach(), preds.detach()
-                self.update_step_loss(loss)    
-                if hasattr(self, 'metrics'):
-                    self.update_step_metrics(preds, targets)  
-                self.on_train_step_end(preds, targets, loss)
-                self.scheduler_epoch_step()    #################
-
-            self.train_steps_complete = True
-
-            self.scheduler_epoch_step()   ######################
-
-            self.train_loss = self.train_loss.mean()    
-            if hasattr(self, 'metrics'):    
-                self.compute_epoch_metrics_mean()
+                self.train_step_wrapper(batch, cpu_to_gpu_tensor_processing)
                 
-            self.on_train_epoch_end()                        # TRAIN STEP END FUNCTION CALL
+            self.train_steps_complete = True
+            
+            self.train_on_steps_completion_wrapper()
+            
             self.epoch_train_active = False
         
             self.eval()
@@ -403,24 +454,12 @@ class HydraModule(torch.nn.Module):
             self.eval_steps_complete = False
             with torch.no_grad():
                 for batch in test_loader:
-                    batch = self.load_data_targets(batch)
-                    loss, preds = self.eval_step(batch)
-                    self.scheduler_epoch_step()    #################
-                    loss, preds = loss.detach(), preds.detach()
-                    
-                    self.update_step_loss(loss)
-                    if hasattr(self, 'metrics'):
-                        self.update_step_metrics(preds, targets) 
-            
-                    self.on_eval_step_end(preds, targets, loss)                # EVAL STEP END FUNCTION CALL
+                    self.eval_step_wrapper(batch, cpu_to_gpu_tensor_processing)    #################
                 
                 self.eval_steps_complete = True  
-                self.scheduler_epoch_step() ################
-                self.eval_loss = self.eval_loss.mean()    
-                if hasattr(self, 'metrics'):
-                    self.compute_epoch_metrics_mean()
                 
-                self.on_eval_epoch_end(callbacks)
+                self.eval_on_steps_completion_wrapper()
+                
             self.epoch_eval_active = False
             
             if (logs_path is not None) or (wandb_p is not None):    
@@ -430,12 +469,14 @@ class HydraModule(torch.nn.Module):
                 
                 if (self.eval_metrics[checkpoint_metric['name']] > self.best_checkpoint_metric) and (checkpoint_metric['type'] == 'maximize'):
                     self.model_checkpoint_save(model_checkpoint_path)
-                    wandb_p.run.summary["best_"+checkpoint_metric['name']] = self.eval_metrics[checkpoint_metric['name']]
+                    if wandb_p is not None:
+                        wandb_p.run.summary["best_"+checkpoint_metric['name']] = self.eval_metrics[checkpoint_metric['name']]
                     self.best_checkpoint_metric = self.eval_metrics[checkpoint_metric['name']]
                     
                 elif (self.eval_metrics[checkpoint_metric['name']] < self.best_checkpoint_metric) and (checkpoint_metric['type'] == 'minimize'):    
                     self.model_checkpoint_save(model_checkpoint_path)
-                    wandb_p.run.summary["best_"+checkpoint_metric['name']] = self.eval_metrics[checkpoint_metric['name']]
+                    if wandb_p is not None:
+                        wandb_p.run.summary["best_"+checkpoint_metric['name']] = self.eval_metrics[checkpoint_metric['name']]
                     self.best_checkpoint_metric = self.eval_metrics[checkpoint_metric['name']]
                     
                 else:
