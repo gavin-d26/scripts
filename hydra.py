@@ -1,8 +1,5 @@
 
-import torch
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
-
+from numpy.core.numeric import Inf
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -76,11 +73,11 @@ class HydraModule(torch.nn.Module):
         if hasattr(self, 'metrics'):
             if self.requires_train_metrics:
                 for key, value in self.train_metrics.items():
-                    if value.dim() !=1:
+                    if value.dim()!=1:
                         assert ValueError('dim of metric ' + key + ' not equal to 1')
 
-                    elif len(value) > 1 and self.class_num_to_name is not None:
-                        assert (len(value) == len(self.class_num_to_name))
+                    elif value.shape[0] > 1 and self.class_num_to_name is not None:
+                        assert (value.shape[0] == len(self.class_num_to_name))
                         multi_class_dict = self.get_multi_class_dict(value)
                         if wandb_p is not None:
                             for name, value in multi_class_dict.items():
@@ -88,10 +85,10 @@ class HydraModule(torch.nn.Module):
                         if writer is not None:        
                             writer.add_scalars('Metric/train/' + key, multi_class_dict, epoch)
                     
-                    elif len(value) > 1 and self.class_num_to_name is None:
+                    elif value.shape[0] > 1 and self.class_num_to_name is None:
                         raise ValueError('More than one class detected, but no class_name_dict given')
                     
-                    elif len(value) == 1:
+                    elif value.shape[0] == 1:
                         if writer is not None:
                             writer.add_scalar('Metric/train/' + key, value, epoch) 
                         if wandb_p is not None:
@@ -104,8 +101,8 @@ class HydraModule(torch.nn.Module):
                 if value.dim() !=1:
                         assert ValueError('dim of metric ' + key + ' not equal to 1')
 
-                elif len(value) > 1 and self.class_num_to_name is not None:
-                    assert (len(value) == len(self.class_num_to_name))
+                elif value.shape[0] > 1 and self.class_num_to_name is not None:
+                    assert (value.shape[0] == len(self.class_num_to_name))
                     multi_class_dict = self.get_multi_class_dict(value)
                     if wandb_p is not None:
                         for name, value in multi_class_dict.items():
@@ -113,10 +110,10 @@ class HydraModule(torch.nn.Module):
                     if writer is not None:        
                         writer.add_scalars('Metric/eval/' + key, multi_class_dict, epoch)
                 
-                elif len(value) > 1 and self.class_num_to_name is None:
+                elif value.shape[0] > 1 and self.class_num_to_name is None:
                         raise ValueError('More than one class detected, but no class_name_dict given')
 
-                elif len(value) == 1:
+                elif value.shape[0] == 1:
                     if writer is not None:
                         writer.add_scalar('Metric/eval/' + key, value, epoch)
                     if wandb_p is not None:
@@ -132,7 +129,7 @@ class HydraModule(torch.nn.Module):
         computed_metrics = {}
         for key, fn in self.metrics.items():
             computed_metrics[key] = fn(preds, targets).float()
-            if (computed_metrics[key].dim() == 0) or ((computed_metrics[key].dim() == 1) and (len(computed_metrics[key])>1)):
+            if (computed_metrics[key].dim() == 0) or ((computed_metrics[key].dim() == 1) and (computed_metrics[key].shape[0]>1)):
                 computed_metrics[key] = computed_metrics[key].unsqueeze(0)
         return computed_metrics
         
@@ -212,67 +209,50 @@ class HydraModule(torch.nn.Module):
             delattr(self, 'eval_metrics')
             
 
-
-    def model_checkpoint_save(self,model_checkpoint_path):
-        """[saves model parameters, optimizer parameters, lr_scheduler parameters]
-
-        Args:
-            model_chekpoint_path ([str]): [path to file location]
-        """
-        save_file = {'model_state_dict':self.state_dict()} 
-        save_file['best_checkpoint_metric'] = self.best_checkpoint_metric
-        if hasattr(self, 'optimizers'): 
-            for i, opt in enumerate(self.optimizers):  
-                save_file['optimizer'+str(i+1)+'_state_dict'] = opt.state_dict()
-        if hasattr(self, 'lr_schedulers'):
-            for i, lrs_dict in enumerate(self.lr_schedulers):
-                # save_file['lr_schedular'+ str(i+1)+'_state_dict'] = lrs.state_dict()
-                new_dict = {'lr_schedular_state_dict':lrs_dict['lr_scheduler'].state_dict()}
-                for key, value in lrs_dict.items():
-                    if key != 'lr_scheduler':
-                        new_dict[key] = value
-                save_file['lr_schedular'+ str(i+1)] = new_dict
-                
-        torch.save(save_file, model_checkpoint_path)      
-    
-    def load_all_weights(self, load_path, only_model = True):
-        """[summary]
-
-        Args:
-            load_path ([str]): [path to serialized model containing 
-            model, optimizer, lr_scheduler parameters]
-            only_model (bool, optional): [whether to load only model parameters or 
-            to include optimizer, lr_scheduler parameters]. Defaults to True.
-        """
-        save_file = torch.load(load_path, map_location = 'cpu')
-        if only_model is True:
-            self.load_state_dict(save_file['model_state_dict'])
-            print('loaded model')
-
-        else:
-            self.compile_utils()
-            self.get_lr_schedulers_epoch_and_step_dict()
-            print('compile done')
-            self.load_state_dict(save_file['model_state_dict'])
-            print('loaded model')
-            if hasattr(self, 'optimizers'):
-                
-                for i, opt in enumerate(self.optimizers):
-                    opt.load_state_dict(save_file['optimizer'+str(i+1)+'_state_dict'])
-                print('loaded optim')
-
-            if hasattr(self, 'lr_schedulers'):
-                
-                for i, lrs_dict in enumerate(self.lr_schedulers):
-                    # lrs.load_state_dict(save_file['lr_schedular'+ str(i+1)+'_state_dict'])
-                    lr_state_dict_update_dict = save_file['lr_schedular'+ str(i+1)]
-                    lrs_dict['lr_scheduler'].load_state_dict(lr_state_dict_update_dict['lr_schedular_state_dict'])
-                    for key, value in lr_state_dict_update_dict.items():
-                        if key != 'lr_schedular_state_dict':
-                            lrs_dict[key] = value
-                
-                print('loaded lr_scheduler') 
-
+    def model_save(self, path):
+        #save model weights
+        model_state_dict = self.state_dict()
+        
+        #save optimizers
+        opt_list = []
+        for opt in self.optimizers:
+            opt_list.append(opt.state_dict())
+            
+        #save lrs
+        lr_scheduler_dict = {}
+        for lrs_dict in self.lr_schedulers:
+            lr_scheduler_dict[lrs_dict['name']] = lrs_dict['lr_scheduler'].state_dict()
+        
+        #final save
+        save_file = {}
+        save_file['best_checkpoint_metric'] = self.best_checkpoint_metric 
+        save_file['model_state_dict'] = model_state_dict
+        save_file['lr_scheduler_dict'] = lr_scheduler_dict
+        save_file['opt_list'] = opt_list    
+        
+        torch.save(save_file, path)
+            
+            
+    def load_model(self, path):
+        if (hasattr(self, 'optimizers') is False) or  (hasattr(self, 'lr_schedulers') is False):
+            self.optimizers, self.lr_schedulers = self.configure_optimizers_and_schedulers()
+        loaded_file = torch.load(path) 
+        
+        #load model weights
+        self.load_state_dict(loaded_file['model_state_dict'])
+        
+        #load optimizer state_dict
+        opt_list = loaded_file['opt_list']
+        for i in range(len(opt_list)):
+            self.optimizers[i].load_state_dict(opt_list[i])
+        
+        #load lrs
+            
+        lr_scheduler_dict = loaded_file['lr_scheduler_dict']
+        
+        for lrs_dict in self.lr_schedulers:
+            lrs_dict['lr_scheduler'].load_state_dict(lr_scheduler_dict[lrs_dict['name']])
+            
 
     def scheduler_epoch_step(self):
         if self.lr_schedulers is not None:
@@ -414,8 +394,17 @@ class HydraModule(torch.nn.Module):
         
 
 
-    def fit(self, train_dataset, test_dataset, epochs = 1, batch_size = 32, callbacks = None,
-            num_workers = 4, logs_path =None, model_checkpoint_path = None, requires_train_metrics = False, checkpoint_metric = None,
+    def fit(self, 
+            train_dataset, 
+            test_dataset, 
+            epochs = 1, 
+            batch_size = 32, 
+            callbacks = None,
+            num_workers = 4, 
+            logs_path =None, 
+            model_checkpoint_path = None, 
+            requires_train_metrics = False, 
+            checkpoint_metric = None,
             wandb_p = None):
         
         self.compile_utils()
@@ -424,6 +413,7 @@ class HydraModule(torch.nn.Module):
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, num_workers = num_workers, shuffle = True,pin_memory = pin_memory)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = batch_size, num_workers = num_workers, shuffle = False, pin_memory = pin_memory)
         
+        self.best_checkpoint_metric = 0.0 if checkpoint_metric['type']=='maximize' else 1000.0 
         cpu_to_gpu_tensor_processing = {'device': self.device}
         
         self.requires_train_metrics = requires_train_metrics
@@ -468,13 +458,13 @@ class HydraModule(torch.nn.Module):
             if (model_checkpoint_path is not None) and (checkpoint_metric is not None):
                 
                 if (self.eval_metrics[checkpoint_metric['name']] > self.best_checkpoint_metric) and (checkpoint_metric['type'] == 'maximize'):
-                    self.model_checkpoint_save(model_checkpoint_path)
+                    self.model_save(model_checkpoint_path)
                     if wandb_p is not None:
                         wandb_p.run.summary["best_"+checkpoint_metric['name']] = self.eval_metrics[checkpoint_metric['name']]
                     self.best_checkpoint_metric = self.eval_metrics[checkpoint_metric['name']]
                     
                 elif (self.eval_metrics[checkpoint_metric['name']] < self.best_checkpoint_metric) and (checkpoint_metric['type'] == 'minimize'):    
-                    self.model_checkpoint_save(model_checkpoint_path)
+                    self.model_save(model_checkpoint_path)
                     if wandb_p is not None:
                         wandb_p.run.summary["best_"+checkpoint_metric['name']] = self.eval_metrics[checkpoint_metric['name']]
                     self.best_checkpoint_metric = self.eval_metrics[checkpoint_metric['name']]
