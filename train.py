@@ -77,8 +77,8 @@ if __name__=="__main__":
     
     train_dataset = data.xray_dataset(train_id_list, expand = True, transforms = True, resize = 256)
     validation_datset = data.xray_dataset(validation_id_list, expand = True, transforms = False, resize = 256)
-    train_dataset = torch.utils.data.Subset(train_dataset, range(128)) ##########
-    validation_datset = torch.utils.data.Subset(validation_datset, range(128))  ############
+    #train_dataset = torch.utils.data.Subset(train_dataset, range(128)) ##########
+    #validation_datset = torch.utils.data.Subset(validation_datset, range(128))  ############
     
     project_name = config_file.project_name
     entity_name = config_file.entity_name

@@ -436,12 +436,12 @@ class HydraModule(torch.nn.Module):
         self.callbacks = callbacks
             
         for epoch in range(epochs):
-            #print('Epoch: ', epoch)  #######################################################################
+            print('Epoch: ', epoch)  #######################################################################
             self.train()
             self.epoch_eval_active = False
             self.epoch_train_active = True
             self.train_steps_complete = False
-            for batch in train_loader:
+            for batch in tqdm(train_loader, desc='Train'):
                 self.train_step_wrapper(batch, cpu_to_gpu_tensor_processing)
                 
             self.train_steps_complete = True
@@ -454,7 +454,7 @@ class HydraModule(torch.nn.Module):
             self.epoch_eval_active = True
             self.eval_steps_complete = False
             with torch.no_grad():
-                for batch in test_loader:
+                for batch in tqdm(test_loader, desc='Eval '):
                     self.eval_step_wrapper(batch, cpu_to_gpu_tensor_processing)    #################
                 
                 self.eval_steps_complete = True  
