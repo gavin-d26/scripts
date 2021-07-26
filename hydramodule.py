@@ -1,5 +1,3 @@
-
-from numpy.core.numeric import Inf
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -48,17 +46,25 @@ class HydraModule(torch.nn.Module):
         return self.lr_schedulers
     
     def configure_optimizers_and_schedulers(self, *args, **kwargs):
-        pass   ####  return  [opt1,opt2,opt3], [{'lr_scheduler': lr_obj, 'update': 'step' or 'epoch}, {...}, {...}]
+        pass   ####  return  [opt1,opt2,opt3], [{'name': 'lrs1',
+    #                                            lr_scheduler': lr_obj, 
+    #                                           'update': 'step' or 'epoch' or 'eval_step' or 'eval_epoch',
+    #                                            'track_metric': 'metric_name' or 'eval_loss' or 'train_loss'}, {...}, {...}]
+    
+    # Note1: if 'update':'step' or 'eval_step', 'track_metric' is ignored
+    # Note2: if 'track_metric':'eval_loss', then => 'update' : 'eval_epoch'
+    #        similarly 'track_metric':'train_loss', then => 'update' : 'train_epoch'
+    
     
     def configure_loss_fn(self, *args, **kwargs):
         pass    #### return list of loss functions ie [loss1, loss2, loss3]
     
     def configure_metrics(self, *args, **kwargs):
-        pass   #return metrics_dict, {0:'classA', 1:'classB', 2:'classC',...}
+        pass   #return {'accuracy':accuracy1_class_instance, 'class_accuracy':accuracy2_class_instance, 'class_accuracy}, {0:'classA', 1:'classB', 2:'classC',...}
     
     
     def get_multi_class_dict(self, metric_value):
-        assert len(metric_value) == len(self.class_num_to_name)
+        assert metric_value.shape[0] == len(self.class_num_to_name)
         class_accuracy_dict = {}
         for i in range(len(metric_value)):
             class_accuracy_dict[self.class_num_to_name[i]] = metric_value[i]

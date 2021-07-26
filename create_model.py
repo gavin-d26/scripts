@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
-import hydra 
+import hydramodule 
+import torchvision
 
 
 
@@ -20,7 +19,7 @@ patience: 6
 """
 
 class Accuracy1():
-    def __call__(self, preds, targets):
+    def __call__(self, preds, targets, threshold = 0.5):
         accurate_preds = (preds > threshold).float()
         accurate_preds = (accurate_preds == targets).float().mean()
         return accurate_preds
@@ -32,11 +31,12 @@ class Accuracy2():
         return accurate_preds
     
 
-class mymodel(hydra.HydraModule):
-    def __init__(self, config, num_classes = 15):
-        super(mymodel, self).__init__()
+class Resnet34(hydramodule.HydraModule):
+    def __init__(self, config, unrecorded_defaults, num_classes = 15):
+        super(Resnet34, self).__init__()
         self.config = config
         self.num_classes = num_classes
+        self.unrecorded_defaults = unrecorded_defaults
         backbone = torchvision.models.resnet34(pretrained = True)
         # for name, layer in backbone.named_children():
         #     if (('1' in name) or ('2' in name))and ('bn' not in name):
@@ -59,11 +59,15 @@ class mymodel(hydra.HydraModule):
         return [torch.nn.BCEWithLogitsLoss()]
 
     def configure_optimizers_and_schedulers(self):
-        optimizer1 = torch.optim.Adam(self.parameters(), lr = self.config['learning_rate'], 
-                                    betas = (self.config['beta1'], self.config['beta2']),
-                                    weight_decay = self.config['weight_decay'])
-        lr1 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer1, factor = self.config['learning_rate_decay'], patience = self.config['patience'])
-        return [optimizer1], [{'lr_scheduler': lr1, 'update': 'eval_epoch'}]
+        optimizer1 = torch.optim.Adam(self.parameters(), lr = self.config.lr, 
+                                    betas = (self.config.beta1, self.config.beta2),
+                                    weight_decay = self.config.weight_decay)
+        
+        lrs_1 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer1, factor = self.unrecorded_defaults['lr_decay'],
+                                                         patience = self.unrecorded_defaults['Patience'])
+        lr1_dict = {'name':'steplr1', 'lr_scheduler': lrs_1, 'update': 'eval_epoch', 'track_metric':'eval_loss'}
+        
+        return [optimizer1], [lr1_dict]
 
     def configure_metrics(self):
         a = Accuracy1()
@@ -76,19 +80,22 @@ class mymodel(hydra.HydraModule):
 
 
 
-    def train_step(self, data, targets):
+    def train_step(self, batch):
+        data, targets = batch
         opt = self.get_optimizers()
+        #print('optim_lr: ',opt.state_dict())
         loss_fn = self.get_loss_fn()
-        opt.zero_grad(set_to_none=True)
+        opt.zero_grad()
         preds = self(data)
         loss = loss_fn(preds, targets)
         loss.backward()
         opt.step()
-        return loss, preds
+        return loss, preds, targets
 
 
-    def eval_step(self, data, targets):
+    def eval_step(self, batch):
+        data, targets = batch
         loss_fn = self.get_loss_fn()
         preds = self(data)
         loss = loss_fn(preds, targets)
-        return loss, preds     
+        return loss, preds, targets     
