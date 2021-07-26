@@ -10,18 +10,20 @@ import torchvision
 import torchvision.transforms as tr
 # from torchvision import models
 from matplotlib import pyplot as plt
-import PIL
-from PIL import Image
-import time
 import random
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import shutil
 from time import time
-#import wandb
+import wandb
 from create_model import Resnet34
 import config_file
 import data
+
+
+torch.manual_seed(0)
+random.seed(0)
+np.random.seed(0)
 
 """
 learning_rate:
@@ -65,30 +67,33 @@ project_name = config_file.project_name
 entity_name = config_file.entity_name
 split_index = config_file.split_index
 
-print(args)
-print(project_name, entity_name)
-print(split_index)
+# print(args)
+# print(project_name, entity_name)
+# print(split_index)
 
-# if __name__=="__main__":
-#     split_index = config_file.split_index
-#     train_id_list, validation_id_list  = data.load_test_validation_df(args['KPath'], split_index)
+if __name__=="__main__":
+    split_index = config_file.split_index
+    train_id_list, validation_id_list  = data.load_test_validation_df(args['KPath'], split_index)
     
-#     train_dataset = data.xray_dataset(train_id_list, expand = True, transforms = True, resize = 256)
-#     validation_datset = data.xray_dataset(validation_id_list, expand = True, transforms = False, resize = 256)
+    train_dataset = data.xray_dataset(train_id_list, expand = True, transforms = True, resize = 256)
+    validation_datset = data.xray_dataset(validation_id_list, expand = True, transforms = False, resize = 256)
+    train_dataset = torch.utils.data.Subset(train_dataset, range(128)) ##########
+    validation_datset = torch.utils.data.Subset(validation_datset, range(128))  ############
     
-#     project_name = config_file.project_name
-#     entity_name = config_file.entity_name
-#     wandb.init(project = project_name, entity = entity_name, name = args['run_name'], config = wandb_config_defaults)
-#     config = wandb.config
-#     model = Resnet34(config, unrecorded_defaults)
-#     model.fit(train_dataset,
-#               validation_datset,
-#               epochs = config.epochs,
-#               batch_size = config.batch_size,
-#               num_workers = 4,
-#               checkpoint_metric = {'name':'accuracy', 'type': 'maximize'},
-#               wandb_p = wandb,
-#               model_checkpoint_path= args['CheckPointPath'])
+    project_name = config_file.project_name
+    entity_name = config_file.entity_name
+    wandb.init(project = project_name, entity = entity_name, name = args['run_name'], config = wandb_config_defaults)
+    config = wandb.config
+    model = Resnet34(config, unrecorded_defaults)
+    model.fit(train_dataset,
+              validation_datset,
+              epochs = config.epochs,
+              batch_size = config.batch_size,
+              num_workers = 2,
+              checkpoint_metric = {'name':'accuracy', 'type': 'maximize'},
+              wandb_p = wandb,
+              model_checkpoint_path= args['CheckPointPath'],
+              mixed_precision= True)
     
     
 

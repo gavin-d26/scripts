@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import hydramodule 
 import torchvision
 
-
+torch.manual_seed(0)
 
 
 """
@@ -72,10 +72,10 @@ class Resnet34(hydramodule.HydraModule):
     def configure_metrics(self):
         a = Accuracy1()
         b = Accuracy2()
-        d = {'Atelectasis':0, 'Cardiomegaly':1, 'Effusion':2 ,'Infiltration':3,
-            'Mass':4,'Nodule':5,'Pneumonia':6,'Pneumothorax':7,'Consolidation':8,
-            'Edema':9,'Emphysema':10,'Fibrosis':11,'Pleural_Thickening':12, 
-            'Hernia':13, 'No Finding':14}
+        d = {0:'Atelectasis', 1:'Cardiomegaly', 2:'Effusion' , 3:'Infiltration',
+            4:'Mass', 5:'Nodule', 6:'Pneumonia', 7:'Pneumothorax', 8:'Consolidation',
+            9:'Edema', 10:'Emphysema', 11:'Fibrosis', 12:'Pleural_Thickening', 
+            13:'Hernia', 14:'No Finding'}
         return {'accuracy':a, 'class_accuracy':b}, d
 
 
@@ -85,11 +85,15 @@ class Resnet34(hydramodule.HydraModule):
         opt = self.get_optimizers()
         #print('optim_lr: ',opt.state_dict())
         loss_fn = self.get_loss_fn()
-        opt.zero_grad()
-        preds = self(data)
-        loss = loss_fn(preds, targets)
-        loss.backward()
-        opt.step()
+        opt.zero_grad(set_to_none=True)
+        
+        with torch.cuda.amp.autocast():
+            preds = self(data)
+            loss = loss_fn(preds, targets)
+            
+        self.scaler.scale(loss).backward()
+        self.scaler.step(opt)
+        self.scaler.update()
         return loss, preds, targets
 
 

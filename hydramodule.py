@@ -215,7 +215,7 @@ class HydraModule(torch.nn.Module):
             delattr(self, 'eval_metrics')
             
 
-    def model_save(self, path):
+    def model_save(self, path):                     # add Grad scalar save support
         #save model weights
         model_state_dict = self.state_dict()
         
@@ -234,12 +234,12 @@ class HydraModule(torch.nn.Module):
         save_file['best_checkpoint_metric'] = self.best_checkpoint_metric 
         save_file['model_state_dict'] = model_state_dict
         save_file['lr_scheduler_dict'] = lr_scheduler_dict
-        save_file['opt_list'] = opt_list    
-        
+        save_file['opt_list'] = opt_list 
+          
         torch.save(save_file, path)
             
             
-    def load_model(self, path):
+    def load_model(self, path):                         # add Grad scalar load support
         if (hasattr(self, 'optimizers') is False) or  (hasattr(self, 'lr_schedulers') is False):
             self.optimizers, self.lr_schedulers = self.configure_optimizers_and_schedulers()
         loaded_file = torch.load(path) 
@@ -330,6 +330,9 @@ class HydraModule(torch.nn.Module):
 
         if self.class_num_to_name is not None:
             assert type(self.class_num_to_name) == dict
+        
+        if self.mixed_precision:
+            self.scaler = torch.cuda.amp.GradScaler()    
 
 
     def get_lr_schedulers_epoch_and_step_dict(self):
@@ -411,8 +414,10 @@ class HydraModule(torch.nn.Module):
             model_checkpoint_path = None, 
             requires_train_metrics = False, 
             checkpoint_metric = None,
-            wandb_p = None):
+            wandb_p = None,
+            mixed_precision = False):
         
+        self.mixed_precision = mixed_precision
         self.compile_utils()
         self.get_lr_schedulers_epoch_and_step_dict()
         pin_memory = True if ((torch.cuda.is_available()) and (num_workers > 0)) else False
@@ -478,7 +483,7 @@ class HydraModule(torch.nn.Module):
                 else:
                     pass
                 
-            print(f'epoch: {epoch} train_loss: {self.train_loss} eval_loss: {self.eval_loss}')   
+            #print(f'epoch: {epoch} train_loss: {self.train_loss} eval_loss: {self.eval_loss}')   
             self.per_epoch_loss_and_metrics_collect()  
         if writer is not None:
             writer.close()

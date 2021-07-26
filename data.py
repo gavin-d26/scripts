@@ -1,10 +1,22 @@
 import torch
 import torchvision
+import torchvision.transforms as tr
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import random
+import PIL
+
+
+torch.manual_seed(0)
+random.seed(0)
 
 
 class xray_dataset(torch.utils.data.Dataset):
     def __init__(self, df, expand = None, transforms = False, resize = None):
         self.df = df
+        print(self.df.iloc[0,1])
+        self.df['Finding Labels'] = self.df['Finding Labels'].apply(lambda x: [int(i) for i in x.split()])
         self.expand = expand
         self.transforms = transforms
         self.length = len(df)
@@ -14,7 +26,7 @@ class xray_dataset(torch.utils.data.Dataset):
         
         label, img_path = self.df.iloc[index, 1:]
         label = torch.tensor(label).float() 
-        img = torchvision.transforms.functional.to_tensor(Image.open(img_path).resize((self.resize,self.resize), 
+        img = torchvision.transforms.functional.to_tensor(PIL.Image.open(img_path).resize((self.resize,self.resize), 
                                                                                       resample=PIL.Image.BILINEAR))
         img = img[0:1,:,:]
 
